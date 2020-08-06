@@ -38,7 +38,7 @@
 AltSoftSerial vot_uart;
 #define VOT_UART vot_uart
 // Debug prints of the received data.  Turn off for a deployed release
-#define VOT_PRINT_TELEMETRY_DATA
+//#define VOT_PRINT_TELEMETRY_DATA
 
 #define VOT_TELEMETRY_TIMEOUT_MS (3 * 1000)
 

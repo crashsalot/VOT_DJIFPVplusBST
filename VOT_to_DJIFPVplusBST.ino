@@ -28,10 +28,12 @@
  *  Arduino Nano TX1 to DJI Air unit RX(115200)
  *  Arduino D8 connected to Vector Uart TX port(57600)
  */
-
+#define ServeBST;
 
 #include "vector_open_telemetry.h"
-#include "bst_telemetry.h"
+#ifdef ServeBST
+  #include "bst_telemetry.h"
+#endif
 #include "config.h"
 #include "util.h"
 
@@ -41,14 +43,14 @@
 #define SPEED_IN_KILOMETERS_PER_HOUR                 //if commented out defaults to m/s
 #define IMPERIAL_UNITS                               //Altitude in feet, distance to home in miles.
 //#define VEHICLE_TYPE                       0       //0==ArduPlane, 1==ArduCopter, 2==INAVPlane, 3==INAVCopter. Used for flight modes
-#define STORE_GPS_LOCATION_IN_SUBTITLE_FILE          //comment out to disable. Stores GPS location in the goggles .srt file in place of the "uavBat:" field at a slow rate of ~2-3s per GPS coordinate
+//#define STORE_GPS_LOCATION_IN_SUBTITLE_FILE          //comment out to disable. Stores GPS location in the goggles .srt file in place of the "uavBat:" field at a slow rate of ~2-3s per GPS coordinate
 //#define DISPLAY_THROTTLE_POSITION                  //will display the current throttle position(0-100%) in place of the osd_roll_pids_pos element.
 #include <MSP.h>
 #include "MSP_OSD.h"
 #include "flt_modes.h"
 #include "OSD_positions_config.h"
 
-//#include <AltSoftSerial.h>
+#include <AltSoftSerial.h>
 HardwareSerial &DJISerial = Serial;           
 MSP msp;
 
@@ -59,18 +61,14 @@ uint8_t vbat = 0;
 uint16_t airspeed = 0;
 uint16_t groundspeed = 0;
 int32_t relative_alt = 0;       // in milimeters
-uint32_t altitude_msp = 0;      // EstimatedAltitudeCm
+//uint32_t altitude_msp = 0;      // EstimatedAltitudeCm
 uint16_t rssi = 0;
-uint8_t battery_remaining = 0;
 uint32_t flightModeFlags = 1;
 char craftname[15] = "DJIAIRUNIT";
 int16_t amperage = 0;
 uint16_t mAhDrawn = 0;
 uint16_t f_mAhDrawn = 0;
 uint8_t numSat = 0;
-uint8_t pid_roll[3];
-uint8_t pid_pitch[3];
-uint8_t pid_yaw[3];
 int32_t gps_lon = 0;
 int32_t gps_lat = 0;
 int32_t gps_alt = 0;
@@ -101,9 +99,6 @@ uint16_t blink_sats_blank_pos = 234;
 uint32_t previousFlightMode = custom_mode;
 uint8_t srtCounter = 1;
 uint8_t thr_position = 0;
-float wind_direction = 0;   // wind direction (degrees)
-float wind_speed = 0;       // wind speed in ground plane (m/s)
-float relative_wind_direction = 0;
 float climb_rate = 0.0;
 
 msp_battery_state_t battery_state = {0};
@@ -123,7 +118,9 @@ msp_altitude_t altitude = {0};
 void setup()
 {
     /* Initialize the Blacksheep Telemetry (BST) layer */
+#ifdef ServeBST
     bst_init();
+#endif
   /* Initialize the Eagletree Vector Open Telemetry layer */
     vot_init();
     DJISerial.begin(115200);
@@ -278,7 +275,33 @@ void invert_pos(uint16_t *pos1, uint16_t *pos2)
     *pos1 = *pos2;
     *pos2 = tmp_pos;
 }
-
+void set_flight_mode_flags()
+{ flightModeFlags = 0;
+   /* if(base_mode & MAV_MODE_FLAG_SAFETY_ARMED){
+        flightModeFlags |= ARM_ACRO_BF;
+    }
+    else{
+        flightModeFlags &= ~ARM_ACRO_BF;
+    }
+    if(custom_mode == STABILIZE){
+        flightModeFlags |= STAB_BF;
+    }
+    else{
+        flightModeFlags &= ~STAB_BF;
+    }
+    if((system_status == MAV_STATE_CRITICAL || system_status == MAV_STATE_EMERGENCY)){
+        flightModeFlags |= FS_BF;
+    }
+    else{
+        flightModeFlags &= ~FS_BF;
+    }
+    if(custom_mode == RTL){
+        flightModeFlags |= RESC_BF;
+    }
+    else{
+        flightModeFlags &= ~RESC_BF;
+    }*/
+}
 void display_flight_mode()
 {
     char txt[15];
@@ -340,7 +363,7 @@ void send_msp_to_airunit()
     raw_gps.lon = gps_lon;
     raw_gps.numSat = numSat;
     raw_gps.alt = relative_alt;
-    raw_gps.groundSpeed = (groundspeed);
+    raw_gps.groundSpeed = (groundspeed);         //in cm/s
     msp.send(MSP_RAW_GPS, &raw_gps, sizeof(raw_gps));
 
     //MSP_COMP_GPS
@@ -349,13 +372,13 @@ void send_msp_to_airunit()
     msp.send(MSP_COMP_GPS, &comp_gps, sizeof(comp_gps));
 
     //MSP_ATTITUDE
-    attitude.pitch = pitch_angle;
-    attitude.roll = roll_angle;
+    attitude.pitch = pitch_angle*10;
+    attitude.roll = roll_angle*10;
     msp.send(MSP_ATTITUDE, &attitude, sizeof(attitude));
 
     //MSP_ALTITUDE
     altitude.estimatedActualPosition = relative_alt; 
-    altitude.estimatedActualVelocity = (int16_t)(climb_rate * 100); //m/s to cm/s    
+    altitude.estimatedActualVelocity = (int16_t)(climb_rate); //m/s to cm/s    
     msp.send(MSP_ALTITUDE, &altitude, sizeof(altitude));
 
 
@@ -400,44 +423,47 @@ void set_battery_cells_number()
 void VOT_to_MSP()
 {
      vbat = (uint8_t)(vot_telemetry.SensorTelemetry.PackVoltageX100/10);
-     battery_remaining = (uint8_t)(vot_telemetry.SensorTelemetry.mAHConsumed);
      amperage = (uint8_t)(vot_telemetry.SensorTelemetry.PackCurrentX10)*10;
-     
-     airspeed = vot_telemetry.SensorTelemetry.AirspeedKPHX10;                    //float
-     groundspeed = vot_telemetry.GPSTelemetry.GroundspeedKPHX10;              //float
+     mAhDrawn = vot_telemetry.SensorTelemetry.mAHConsumed;     
+     airspeed = vot_telemetry.SensorTelemetry.AirspeedKPHX10*2.778;                    //float
+     groundspeed = vot_telemetry.GPSTelemetry.GroundspeedKPHX10*2.778;              //float
      heading = vot_telemetry.SensorTelemetry.CompassDegrees;
      pitch_angle = vot_telemetry.SensorTelemetry.Attitude.PitchDegrees;
      roll_angle = vot_telemetry.SensorTelemetry.Attitude.RollDegrees;
-     wind_direction = vot_telemetry.SensorTelemetry.Attitude.YawDegrees;
+     //yaw = vot_telemetry.SensorTelemetry.Attitude.YawDegrees;
 
-     climb_rate = vot_telemetry.SensorTelemetry.ClimbRateMSX100;                     //float m/s
+     climb_rate = vot_telemetry.SensorTelemetry.ClimbRateMSX100 / 100;                     //float m/s
      relative_alt = vot_telemetry.SensorTelemetry.BaroAltitudecm *10;
      //rpm = vot_telemetry.SensorTelemetry.RPM;
      gps_lat = vot_telemetry.GPSTelemetry.LatitudeX1E7;
      gps_lon = vot_telemetry.GPSTelemetry.LongitudeX1E7;
      gps_alt = vot_telemetry.GPSTelemetry.GPSAltitudecm;
+     distanceToHome = vot_telemetry.GPSTelemetry.DistanceFromHomeMX10/10;          //alternative to calculated in nano
      numSat = vot_telemetry.GPSTelemetry.SatsInUse;
-     if(numSat >4)fix_type = 2;
-     if(numSat >6)fix_type = 3;
+     if (gps_lon == 0) numSat = 1;
+     if(numSat >3)fix_type = 2;
+     if(numSat >5)fix_type = 3;
      custom_mode = vot_telemetry.PresentFlightMode;
 
       rssi = (uint16_t)map(vot_telemetry.SensorTelemetry.RSSIPercent, 0, 100, 0, 1023); //scale 0-1023
       //lq = (uint16_t)map(vot_telemetry.SensorTelemetry.LQPercent, 0, 100, 0, 1023);
-            wind_direction = 180;
-            wind_speed = 259;
+            
 }
 
 void loop()
 {
+#ifdef ServeBST
     bst_handler_task();
+#endif
     vot_handler_task();
-    VOT_to_MSP();
+    //VOT_to_MSP();
     uint32_t currentMillis_MSP = millis();
     if ((uint32_t)(currentMillis_MSP - previousMillis_MSP) >= next_interval_MSP) {
         previousMillis_MSP = currentMillis_MSP;
         GPS_calculateDistanceAndDirectionToHome();
-
-        mAh_drawn_calc();
+        VOT_to_MSP();
+        set_flight_mode_flags();
+        //mAh_drawn_calc();
         blink_sats();
         send_msp_to_airunit();
         general_counter += next_interval_MSP;
