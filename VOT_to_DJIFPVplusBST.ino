@@ -28,7 +28,7 @@
  *  Arduino Nano TX1 to DJI Air unit RX(115200)
  *  Arduino D8 connected to Vector Uart TX port(57600)
  */
-#define ServeBST;
+//#define ServeBST;
 
 #include "vector_open_telemetry.h"
 #ifdef ServeBST
@@ -63,7 +63,7 @@ uint16_t groundspeed = 0;
 int32_t relative_alt = 0;       // in milimeters
 //uint32_t altitude_msp = 0;      // EstimatedAltitudeCm
 uint16_t rssi = 0;
-uint32_t flightModeFlags = 1;
+uint32_t flightModeFlags = 0x00000002;
 char craftname[15] = "DJIAIRUNIT";
 int16_t amperage = 0;
 uint16_t mAhDrawn = 0;
@@ -101,10 +101,26 @@ uint8_t srtCounter = 1;
 uint8_t thr_position = 0;
 float climb_rate = 0.0;
 
+
+// MSP_STATUS_DJI reply
+struct msp_status_DJI_t {
+  uint16_t cycleTime;
+  uint16_t i2cErrorCounter;
+  uint16_t sensor;                    // MSP_STATUS_SENSOR_...
+  uint32_t flightModeFlags;           // see getActiveModes()
+  uint8_t  configProfileIndex;
+  uint16_t averageSystemLoadPercent;  // 0...100
+  uint16_t armingFlags;   //0x0103 or 0x0301
+  uint8_t  accCalibrationAxisFlags;  //0
+  uint8_t  DJI_ARMING_DISABLE_FLAGS_COUNT; //25
+  uint32_t djiPackArmingDisabledFlags; //(1 << 24)
+} __attribute__ ((packed));
+
 msp_battery_state_t battery_state = {0};
 msp_name_t name = {0};
 //msp_fc_version_t fc_version = {0};
-msp_status_BF_t status_BF = {0};
+//msp_status_BF_t status_BF = {0};
+msp_status_DJI_t status_DJI = {0};
 msp_analog_t analog = {0};
 msp_raw_gps_t raw_gps = {0};
 msp_comp_gps_t comp_gps = {0};
@@ -127,6 +143,15 @@ void setup()
     msp.begin(DJISerial);
     //MSP_OSD_CONFIG
     //send_osd_config();
+    status_DJI.cycleTime = 0x0080;
+    status_DJI.i2cErrorCounter = 0;
+    status_DJI.sensor =0x23;
+    status_DJI.configProfileIndex =0;
+    status_DJI.averageSystemLoadPercent = 7;
+    status_DJI.accCalibrationAxisFlags = 0;
+    status_DJI.DJI_ARMING_DISABLE_FLAGS_COUNT    =  20;
+    status_DJI.djiPackArmingDisabledFlags = (1<<24);
+    flightModeFlags = 0x00000002;
 }
 
 #define M_PIf       3.14159265358979323846f
@@ -276,7 +301,8 @@ void invert_pos(uint16_t *pos1, uint16_t *pos2)
     *pos2 = tmp_pos;
 }
 void set_flight_mode_flags()
-{ flightModeFlags = 0;
+{ //;
+  
    /* if(base_mode & MAV_MODE_FLAG_SAFETY_ARMED){
         flightModeFlags |= ARM_ACRO_BF;
     }
@@ -322,9 +348,18 @@ void send_msp_to_airunit()
     memcpy(name.craft_name, craftname, sizeof(craftname));
     msp.send(MSP_NAME, &name, sizeof(name));
 
-    //MSP_STATUS
-    status_BF.flightModeFlags = flightModeFlags;
-    msp.send(MSP_STATUS, &status_BF, sizeof(status_BF));
+//MSP_STATUS    
+  if (flightModeFlags == 0x00000002)
+    { 
+      if (amperage > 300) {flightModeFlags = 0x00000003;}
+      //if (custom_mode > 3) {flightModeFlags = 0x00000003;}
+    }
+
+    status_DJI.flightModeFlags = flightModeFlags;
+    status_DJI.armingFlags =0x0303;
+    msp.send(MSP_STATUS_EX, &status_DJI, sizeof(status_DJI));
+    status_DJI.armingFlags =0x0000;
+    msp.send(MSP_STATUS, &status_DJI, sizeof(status_DJI));
 
     //MSP_ANALOG
     analog.vbat = vbat;
@@ -433,7 +468,7 @@ void VOT_to_MSP()
      //yaw = vot_telemetry.SensorTelemetry.Attitude.YawDegrees;
 
      climb_rate = vot_telemetry.SensorTelemetry.ClimbRateMSX100 / 100;                     //float m/s
-     relative_alt = vot_telemetry.SensorTelemetry.BaroAltitudecm *10;
+     relative_alt = vot_telemetry.SensorTelemetry.BaroAltitudecm;
      //rpm = vot_telemetry.SensorTelemetry.RPM;
      gps_lat = vot_telemetry.GPSTelemetry.LatitudeX1E7;
      gps_lon = vot_telemetry.GPSTelemetry.LongitudeX1E7;
@@ -456,7 +491,6 @@ void loop()
     bst_handler_task();
 #endif
     vot_handler_task();
-    //VOT_to_MSP();
     uint32_t currentMillis_MSP = millis();
     if ((uint32_t)(currentMillis_MSP - previousMillis_MSP) >= next_interval_MSP) {
         previousMillis_MSP = currentMillis_MSP;

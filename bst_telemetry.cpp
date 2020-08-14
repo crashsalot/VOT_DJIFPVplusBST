@@ -137,8 +137,8 @@ static bool bst_write_rc_channels(void);
 /* ----------------------------------------------------- */
 
 #define BST_HEX_PRINT(_X) do { hex_print((_X)); } while(0)
-#define BST_PRINT(...) do { Serial.print(__VA_ARGS__); } while(0)
-#define BST_PRINTLN(...) do { Serial.println(__VA_ARGS__); } while(0)
+#define BST_PRINT(...) do { /*Serial.print(__VA_ARGS__);*/ } while(0)
+#define BST_PRINTLN(...) do { /*Serial.println(__VA_ARGS__);*/ } while(0)
 
 #ifdef BST_DEBUG
 #define BST_HEX_DPRINT(_X) do { hex_print((_X)); } while(0)
