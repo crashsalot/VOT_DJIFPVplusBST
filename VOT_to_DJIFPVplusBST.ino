@@ -60,7 +60,7 @@ uint32_t custom_mode = 0;                       //flight mode
 uint8_t vbat = 0;
 uint16_t airspeed = 0;
 uint16_t groundspeed = 0;
-int32_t relative_alt = 0;       // in milimeters
+int32_t relative_alt = 0;       
 //uint32_t altitude_msp = 0;      // EstimatedAltitudeCm
 uint16_t rssi = 0;
 uint32_t flightModeFlags = 0x00000002;
@@ -413,7 +413,7 @@ void send_msp_to_airunit()
 
     //MSP_ALTITUDE
     altitude.estimatedActualPosition = relative_alt; 
-    altitude.estimatedActualVelocity = (int16_t)(climb_rate); //m/s to cm/s    
+    altitude.estimatedActualVelocity = (int16_t)(climb_rate); 
     msp.send(MSP_ALTITUDE, &altitude, sizeof(altitude));
 
 
@@ -458,16 +458,16 @@ void set_battery_cells_number()
 void VOT_to_MSP()
 {
      vbat = (uint8_t)(vot_telemetry.SensorTelemetry.PackVoltageX100/10);
-     amperage = (uint8_t)(vot_telemetry.SensorTelemetry.PackCurrentX10)*10;
+     amperage = vot_telemetry.SensorTelemetry.PackCurrentX10*10;
      mAhDrawn = vot_telemetry.SensorTelemetry.mAHConsumed;     
-     airspeed = vot_telemetry.SensorTelemetry.AirspeedKPHX10*2.778;                    //float
-     groundspeed = vot_telemetry.GPSTelemetry.GroundspeedKPHX10*2.778;              //float
+     airspeed = vot_telemetry.SensorTelemetry.AirspeedKPHX10*2.778;                    
+     groundspeed = vot_telemetry.GPSTelemetry.GroundspeedKPHX10*2.778;              
      heading = vot_telemetry.SensorTelemetry.CompassDegrees;
      pitch_angle = vot_telemetry.SensorTelemetry.Attitude.PitchDegrees;
      roll_angle = vot_telemetry.SensorTelemetry.Attitude.RollDegrees;
      //yaw = vot_telemetry.SensorTelemetry.Attitude.YawDegrees;
 
-     climb_rate = vot_telemetry.SensorTelemetry.ClimbRateMSX100 / 100;                     //float m/s
+     climb_rate = vot_telemetry.SensorTelemetry.ClimbRateMSX100 / 100;              
      relative_alt = vot_telemetry.SensorTelemetry.BaroAltitudecm;
      //rpm = vot_telemetry.SensorTelemetry.RPM;
      gps_lat = vot_telemetry.GPSTelemetry.LatitudeX1E7;
