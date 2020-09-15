@@ -29,6 +29,7 @@
  *  Arduino D8 connected to Vector Uart TX port(57600)
  */
 //#define ServeBST;
+#define USE_AIRSPEED
 
 #include "vector_open_telemetry.h"
 #ifdef ServeBST
@@ -398,7 +399,11 @@ void send_msp_to_airunit()
     raw_gps.lon = gps_lon;
     raw_gps.numSat = numSat;
     raw_gps.alt = relative_alt;
-    raw_gps.groundSpeed = (groundspeed);         //in cm/s
+#ifdef USE_AIRSPEED
+    raw_gps.groundSpeed = (groundspeed);         
+#else
+    raw_gps.groundSpeed = (airspeed);         
+#endif
     msp.send(MSP_RAW_GPS, &raw_gps, sizeof(raw_gps));
 
     //MSP_COMP_GPS
